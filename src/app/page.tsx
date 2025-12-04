@@ -5,9 +5,7 @@ import BiconomySmartAccount from "./components/BiconomySmartAccount";
 import SmartSessionsDemo from "./components/SmartSessionsDemo";
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"eoa" | "passkey" | "session">(
-    "eoa"
-  );
+  const [activeTab, setActiveTab] = useState<"eoa" | "session">("eoa");
 
   return (
     <div className="font-sans flex flex-col items-center min-h-screen p-8">
@@ -30,16 +28,6 @@ export default function Home() {
             EOA (MetaMask)
           </button>
           <button
-            onClick={() => setActiveTab("passkey")}
-            className={`px-6 py-3 font-medium text-sm transition-colors ${
-              activeTab === "passkey"
-                ? "border-b-2 border-purple-600 text-purple-600 dark:text-purple-400"
-                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-            }`}
-          >
-            Passkey (WebAuthn)
-          </button>
-          <button
             onClick={() => setActiveTab("session")}
             className={`px-6 py-3 font-medium text-sm transition-colors ${
               activeTab === "session"
@@ -54,14 +42,6 @@ export default function Home() {
 
       <main className="flex flex-col gap-8 items-center w-full">
         {activeTab === "eoa" && <BiconomySmartAccount />}
-
-        {activeTab === "passkey" && (
-          <div className="w-full max-w-2xl p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
-            <p className="text-gray-600 dark:text-gray-400 text-center">
-              Passkey implementation coming soon...
-            </p>
-          </div>
-        )}
 
         {activeTab === "session" && <SmartSessionsDemo />}
       </main>

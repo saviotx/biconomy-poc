@@ -14,8 +14,8 @@ import {
   getSudoPolicy,
 } from "@biconomy/abstractjs";
 import { http, type Hex } from "viem";
-import { optimismSepolia } from "viem/chains";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import { new_sophon_testnet } from "../providers/wagmi";
 
 // Helper function to serialize objects with BigInt
 const serializeBigInt = (obj: unknown): string => {
@@ -81,29 +81,29 @@ export default function SmartSessionsDemo() {
     setLogs([]);
 
     try {
-      addLog("🚀 Step 1: Preparing Smart Account with Sessions Module...");
+      addLog("Step 1: Preparing Smart Account with Sessions Module...");
 
       // Create the smart account
       const smartAccount = await toMultichainNexusAccount({
         signer: walletClient,
         chainConfigurations: [
           {
-            chain: optimismSepolia,
+            chain: new_sophon_testnet,
             transport: http(),
             version: getMEEVersion(MEEVersion.V2_1_0),
           },
         ],
       });
 
-      const nexusAddress = smartAccount.addressOn(optimismSepolia.id);
+      const nexusAddress = smartAccount.addressOn(new_sophon_testnet.id);
       setSmartAccountAddress(nexusAddress ?? null);
-      addLog(`✅ Smart Account Address: ${nexusAddress}`);
+      addLog(`Smart Account Address: ${nexusAddress}`);
 
       // Generate a session key (this would normally be stored securely on your backend)
       const sessionPrivateKey = generatePrivateKey();
       const sessionSigner = privateKeyToAccount(sessionPrivateKey);
       setSessionKeyAddress(sessionSigner.address);
-      addLog(`🔑 Session Key Generated: ${sessionSigner.address}`);
+      addLog(`Session Key Generated: ${sessionSigner.address}`);
 
       // Store session key in localStorage for this demo (in production, store on backend!)
       localStorage.setItem("sessionPrivateKey", sessionPrivateKey);
@@ -113,7 +113,7 @@ export default function SmartSessionsDemo() {
         signer: sessionSigner,
       });
 
-      addLog("📦 Installing Smart Sessions Module...");
+      addLog("Installing Smart Sessions Module...");
 
       // Create MEE client
       const meeClient = await createMeeClient({
@@ -122,38 +122,46 @@ export default function SmartSessionsDemo() {
         apiKey: sponsorshipApiKey,
       });
 
-      console.log("🔑 MEE Client created:", meeClient);
+      console.log("MEE Client created:", meeClient);
 
       // Extend with session actions
       const sessionsMeeClient = meeClient.extend(meeSessionActions);
 
-      console.log("🔑 Sessions MEE Client created:", sessionsMeeClient);
+      console.log("Sessions MEE Client created:", sessionsMeeClient);
 
       // Prepare for permissions (this will deploy account and install module if needed)
       const payload = await sessionsMeeClient.prepareForPermissions({
         smartSessionsValidator: ssValidator,
         feeToken: {
+          address: "0x000000000000000000000000000000000000800A" as Hex, // SOPHON on New Sophon Testnet
+          chainId: new_sophon_testnet.id,
+        },
+      });
+
+      /* const payload = await sessionsMeeClient.prepareForPermissions({
+        smartSessionsValidator: ssValidator,
+        feeToken: {
           // Use USDC as fee token on Optimism Sepolia
           // You need to send USDC to your smart account first!
           address: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7" as Hex, // USDC on Optimism Sepolia
-          chainId: optimismSepolia.id,
+          chainId: new_sophon_testnet.id,
         },
-      });
+      }); */
 
       console.log("🔑 Payload created:", payload);
 
       if (payload) {
-        addLog("⏳ Waiting for preparation transaction...");
+        addLog("Waiting for preparation transaction...");
         await meeClient.waitForSupertransactionReceipt({
           hash: payload.hash,
         });
-        addLog(`✅ Account prepared! Tx: ${payload.hash}`);
+        addLog(`Account prepared! Tx: ${payload.hash}`);
         setTxHash(payload.hash);
       } else {
-        addLog("✅ Account already prepared!");
+        addLog("Account already prepared!");
       }
 
-      addLog("🎉 Step 1 Complete! Ready to grant permissions.");
+      addLog("Step 1 Complete! Ready to grant permissions.");
       setCurrentStep("idle");
     } catch (err) {
       console.error("❌ Error preparing account:", err);
@@ -181,14 +189,14 @@ export default function SmartSessionsDemo() {
     setCurrentStep("granting");
 
     try {
-      addLog("🔐 Step 2: Granting Permission to Session Key...");
+      addLog("Step 2: Granting Permission to Session Key...");
 
       // Recreate smart account
       const smartAccount = await toMultichainNexusAccount({
         signer: walletClient,
         chainConfigurations: [
           {
-            chain: optimismSepolia,
+            chain: new_sophon_testnet,
             transport: http(),
             version: getMEEVersion(MEEVersion.V2_1_0),
           },
@@ -205,16 +213,18 @@ export default function SmartSessionsDemo() {
       // Extend with session actions
       const sessionsMeeClient = meeClient.extend(meeSessionActions);
 
-      addLog("📝 Requesting signature to grant permission...");
+      addLog("Requesting signature to grant permission...");
 
       // Grant permission to send a simple transaction (0 ETH to any address)
       // Using getSudoPolicy() for simplicity - this allows any action
+      console.log("Session key address:", sessionKeyAddress);
+
       const sessionDetailsResult =
         await sessionsMeeClient.grantPermissionTypedDataSign({
           redeemer: sessionKeyAddress as Hex,
           actions: [
             {
-              chainId: optimismSepolia.id,
+              chainId: new_sophon_testnet.id,
               actionTarget: "0x0000000000000000000000000000000000000000" as Hex, // Allow any target
               actionTargetSelector: "0x00000000" as Hex, // Allow any function
               actionPolicies: [getSudoPolicy()], // Sudo policy = unrestricted (for demo purposes)
@@ -229,8 +239,8 @@ export default function SmartSessionsDemo() {
         serializeBigInt(sessionDetailsResult)
       );
 
-      addLog("✅ Permission granted to session key!");
-      addLog("🎉 Step 2 Complete! Session key can now execute transactions.");
+      addLog("Permission granted to session key!");
+      addLog("Step 2 Complete! Session key can now execute transactions.");
       setCurrentStep("idle");
     } catch (err) {
       console.error("❌ Error granting permission:", err);
@@ -253,7 +263,7 @@ export default function SmartSessionsDemo() {
     setCurrentStep("using");
 
     try {
-      addLog("🎯 Step 3: Using Session Key to Execute Transaction...");
+      addLog("Step 3: Using Session Key to Execute Transaction...");
 
       // Retrieve session key from localStorage
       const sessionPrivateKey = localStorage.getItem("sessionPrivateKey");
@@ -266,18 +276,17 @@ export default function SmartSessionsDemo() {
       const sessionSigner = privateKeyToAccount(sessionPrivateKey as Hex);
       const parsedSessionDetails = deserializeBigInt(storedSessionDetails);
 
-      addLog("🔄 Creating account with session signer...");
+      addLog("Creating account with session signer...");
 
       // Create the smart account but with the session signer
       const userOwnedAccountWithSessionSigner = await toMultichainNexusAccount({
         chainConfigurations: [
           {
-            chain: optimismSepolia,
+            chain: new_sophon_testnet,
             transport: http(),
             version: getMEEVersion(MEEVersion.V2_1_0),
           },
         ],
-        accountAddress: smartAccountAddress as Hex,
         signer: sessionSigner,
       });
 
@@ -291,9 +300,9 @@ export default function SmartSessionsDemo() {
       const sessionSignerSessionMeeClient =
         sessionSignerMeeClient.extend(meeSessionActions);
 
-      addLog("📤 Building and sending transaction (0 ETH transfer)...");
+      addLog("Building and sending transaction (0 ETH transfer)...");
 
-      addLog("🚀 Executing with session permission...");
+      addLog("Executing with session permission...");
 
       // Use the permission to execute (send 0 ETH to the smart account itself)
       const executionPayload =
@@ -303,7 +312,7 @@ export default function SmartSessionsDemo() {
           mode: "ENABLE_AND_USE",
           instructions: [
             {
-              chainId: optimismSepolia.id,
+              chainId: new_sophon_testnet.id,
               calls: [
                 {
                   to: smartAccountAddress as Hex,
@@ -321,16 +330,16 @@ export default function SmartSessionsDemo() {
         });
 
       setTxHash(executionPayload.hash);
-      addLog(`✅ Transaction sent! Hash: ${executionPayload.hash}`);
+      addLog(`Transaction sent! Hash: ${executionPayload.hash}`);
       addLog("⏳ Waiting for confirmation...");
 
       await sessionSignerMeeClient.waitForSupertransactionReceipt({
         hash: executionPayload.hash,
       });
 
-      addLog("🎉 Transaction confirmed! Session key successfully used!");
+      addLog("Transaction confirmed! Session key successfully used!");
       addLog(
-        "💡 The session key executed a transaction WITHOUT requiring your signature!"
+        "The session key executed a transaction WITHOUT requiring your signature!"
       );
       setCurrentStep("idle");
     } catch (err) {
@@ -369,19 +378,6 @@ export default function SmartSessionsDemo() {
       <h2 className="text-2xl font-bold mb-4">Smart Sessions Demo</h2>
 
       <div className="space-y-4">
-        {/* Info Box */}
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-          <p className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
-            💡 What are Smart Sessions?
-          </p>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Smart Sessions allow you to grant limited permissions to a
-            &ldquo;session key&rdquo; that can execute transactions on your
-            behalf WITHOUT requiring your signature each time. Perfect for
-            gaming, subscriptions, or automated actions!
-          </p>
-        </div>
-
         {/* Account Info */}
         <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
@@ -407,7 +403,7 @@ export default function SmartSessionsDemo() {
             <p className="font-mono text-sm break-all">{sessionKeyAddress}</p>
             <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
               ⚠️ For demo purposes, this key is stored in localStorage. In
-              production, store it securely on your backend!
+              production, we would store it securely on the backend.
             </p>
           </div>
         )}
@@ -420,12 +416,12 @@ export default function SmartSessionsDemo() {
             </p>
             <p className="font-mono text-sm break-all mb-2">{txHash}</p>
             <a
-              href={`https://sepolia-optimism.etherscan.io/tx/${txHash}`}
+              href={`https://block-explorer.zksync-os-testnet-sophon.zksync.dev/tx/${txHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-green-600 dark:text-green-400 text-sm hover:underline inline-block"
             >
-              View on Etherscan →
+              View on Block Explorer →
             </a>
           </div>
         )}
@@ -469,10 +465,10 @@ export default function SmartSessionsDemo() {
             }`}
           >
             {currentStep === "preparing"
-              ? "⏳ Preparing Account..."
+              ? "Preparing Account..."
               : smartAccountAddress
-              ? "✅ Step 1: Account Prepared"
-              : "🚀 Step 1: Prepare Account & Install Sessions Module"}
+              ? "Step 1: Account Prepared"
+              : "Step 1: Prepare Account & Install Sessions Module"}
           </button>
 
           {/* Step 2 */}
@@ -490,10 +486,10 @@ export default function SmartSessionsDemo() {
             }`}
           >
             {currentStep === "granting"
-              ? "⏳ Granting Permission..."
+              ? "Granting Permission..."
               : sessionDetails
-              ? "✅ Step 2: Permission Granted"
-              : "🔐 Step 2: Grant Permission to Session Key"}
+              ? "Step 2: Permission Granted"
+              : "Step 2: Grant Permission to Session Key"}
           </button>
 
           {/* Step 3 */}
@@ -507,8 +503,8 @@ export default function SmartSessionsDemo() {
             }`}
           >
             {currentStep === "using"
-              ? "⏳ Executing with Session Key..."
-              : "🎯 Step 3: Use Session Key (No Signature Required!)"}
+              ? "Executing with Session Key..."
+              : "Step 3: Use Session Key (No Signature Required!)"}
           </button>
 
           {/* Reset Button */}
@@ -518,37 +514,9 @@ export default function SmartSessionsDemo() {
               disabled={isLoading}
               className="w-full py-2 px-4 rounded-lg font-medium transition-colors bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200"
             >
-              🔄 Reset Demo
+              Reset Demo
             </button>
           )}
-        </div>
-
-        {/* How it Works */}
-        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-          <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-100 mb-2">
-            📚 How It Works:
-          </p>
-          <ol className="text-sm text-gray-600 dark:text-gray-400 space-y-2 ml-4 list-decimal">
-            <li>
-              <strong>Prepare Account:</strong> Deploy your smart account and
-              install the Smart Sessions module (ERC-7579 module)
-            </li>
-            <li>
-              <strong>Grant Permission:</strong> Sign a message to give the
-              session key limited permissions (you control what it can do,
-              where, and for how long)
-            </li>
-            <li>
-              <strong>Use Session Key:</strong> The session key can now execute
-              transactions within the granted permissions WITHOUT your
-              signature!
-            </li>
-          </ol>
-          <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
-            💡 In this demo, the session key has unrestricted permissions (sudo
-            policy) for simplicity. In production, you&apos;d set specific
-            limits!
-          </p>
         </div>
       </div>
     </div>

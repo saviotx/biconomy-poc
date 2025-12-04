@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
 import {
   createMeeClient,
@@ -10,8 +10,8 @@ import {
   MEEVersion,
   toMultichainNexusAccount,
 } from "@biconomy/abstractjs";
-import { http } from "viem";
-import { optimismSepolia } from "viem/chains";
+import { Chain, Address, createPublicClient, http } from "viem";
+import { new_sophon_testnet } from "../providers/wagmi";
 
 export default function BiconomySmartAccount() {
   const { address, isConnected } = useAccount();
@@ -23,6 +23,47 @@ export default function BiconomySmartAccount() {
   const [isDeploying, setIsDeploying] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const isBiconomyAccountDeployed = async (
+    chain: Chain,
+    accountAddress: Address
+  ): Promise<boolean> => {
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(),
+    });
+
+    const code = await publicClient.getCode({ address: accountAddress });
+    return code !== undefined && code !== "0x";
+  };
+
+  const checkIfSmartAccountIsDeployed = async () => {
+    if (!walletClient) return;
+    const smartAccount = await toMultichainNexusAccount({
+      signer: walletClient,
+      chainConfigurations: [
+        {
+          chain: new_sophon_testnet,
+          transport: http(),
+          version: getMEEVersion(MEEVersion.V2_1_0),
+        },
+      ],
+    });
+
+    // Get the Nexus address
+    const nexusAddress = smartAccount.addressOn(new_sophon_testnet.id);
+    const isDeployed = await isBiconomyAccountDeployed(
+      new_sophon_testnet,
+      nexusAddress as Address
+    );
+    if (isDeployed) {
+      setSmartAccountAddress(nexusAddress ?? null);
+      setIsDeploying(false);
+      return;
+    }
+    setSmartAccountAddress(null);
+    return;
+  };
 
   const deploySmartAccount = async () => {
     if (!walletClient || !address) {
@@ -43,7 +84,7 @@ export default function BiconomySmartAccount() {
         signer: walletClient,
         chainConfigurations: [
           {
-            chain: optimismSepolia,
+            chain: new_sophon_testnet,
             transport: http(),
             version: getMEEVersion(MEEVersion.V2_1_0),
           },
@@ -51,7 +92,19 @@ export default function BiconomySmartAccount() {
       });
 
       // Get the Nexus address
-      const nexusAddress = smartAccount.addressOn(optimismSepolia.id);
+      const nexusAddress = smartAccount.addressOn(new_sophon_testnet.id);
+      if (!nexusAddress) {
+        setError("Smart account address not found");
+        return;
+      }
+      const isDeployed = await isBiconomyAccountDeployed(
+        new_sophon_testnet,
+        nexusAddress as Address
+      );
+      if (isDeployed) {
+        setError("Smart account already deployed");
+        return;
+      }
       setSmartAccountAddress(nexusAddress ?? null);
 
       console.log("✅ Smart Account Created:");
@@ -61,7 +114,6 @@ export default function BiconomySmartAccount() {
       // Create MEE client for sponsored transactions
       const isStaging = true;
       const sponsorshipApiKey = "mee_3Zmc7H6Pbd5wUfUGu27aGzdf"; // Default staging api key
-
       const meeClient = await createMeeClient({
         account: smartAccount,
         url: getDefaultMEENetworkUrl(isStaging),
@@ -82,7 +134,7 @@ export default function BiconomySmartAccount() {
               gasLimit: BigInt(20000),
             },
           ],
-          chainId: optimismSepolia.id,
+          chainId: new_sophon_testnet.id,
         },
       });
 
@@ -110,6 +162,10 @@ export default function BiconomySmartAccount() {
       setIsDeploying(false);
     }
   };
+
+  useEffect(() => {
+    checkIfSmartAccountIsDeployed();
+  }, [walletClient]);
 
   if (!isConnected) {
     return (
@@ -142,12 +198,12 @@ export default function BiconomySmartAccount() {
             </p>
             <p className="font-mono text-sm break-all">{smartAccountAddress}</p>
             <a
-              href={`https://sepolia-optimism.etherscan.io/address/${smartAccountAddress}`}
+              href={`https://block-explorer.zksync-os-testnet-sophon.zksync.dev/address/${smartAccountAddress}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 dark:text-blue-400 text-sm hover:underline mt-2 inline-block"
             >
-              View on Etherscan →
+              View on Block Explorer →
             </a>
           </div>
         )}
@@ -155,23 +211,10 @@ export default function BiconomySmartAccount() {
         {/* Transaction Hash */}
         {txHash && (
           <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-              Transaction Hash
-            </p>
-            <p className="font-mono text-sm break-all mb-2">{txHash}</p>
-            <a
-              href={`https://sepolia-optimism.etherscan.io/tx/${txHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-green-600 dark:text-green-400 text-sm hover:underline inline-block"
-            >
-              View on Etherscan →
-            </a>
             <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-800">
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 ✅ Success! Your smart account has been deployed and a
-                transaction was executed with gas sponsored by Biconomy (you
-                paid $0!)
+                transaction was executed with gas sponsored by Biconomy
               </p>
             </div>
           </div>
@@ -187,9 +230,9 @@ export default function BiconomySmartAccount() {
         {/* Deploy Button */}
         <button
           onClick={deploySmartAccount}
-          disabled={isDeploying}
+          disabled={isDeploying || !!smartAccountAddress}
           className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
-            isDeploying
+            isDeploying || !!smartAccountAddress
               ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
               : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white"
           }`}
@@ -197,25 +240,9 @@ export default function BiconomySmartAccount() {
           {isDeploying
             ? "Deploying Smart Account..."
             : smartAccountAddress
-            ? "Deploy Another Smart Account"
+            ? "Smart Account Deployed"
             : "Deploy Smart Account"}
         </button>
-
-        {/* Info */}
-        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            💡 <strong>What will happen:</strong>
-          </p>
-          <ul className="text-sm text-gray-600 dark:text-gray-400 mt-2 space-y-1 ml-4 list-disc">
-            <li>A Nexus smart account will be created from your EOA</li>
-            <li>
-              A dummy transaction will be sent to deploy the smart account
-              on-chain
-            </li>
-            <li>Gas will be sponsored by Biconomy (you pay $0!)</li>
-            <li>You can view the account and transaction on Etherscan</li>
-          </ul>
-        </div>
       </div>
     </div>
   );

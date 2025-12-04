@@ -1,9 +1,8 @@
 "use client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
-import { optimismSepolia } from "@reown/appkit/networks";
 import { cookieToInitialState, WagmiProvider, type Config } from "wagmi";
-import { wagmiAdapter, projectId } from "./wagmi";
+import { wagmiAdapter, projectId, new_sophon_testnet } from "./wagmi";
 
 // Set up queryClient
 const queryClient = new QueryClient();
@@ -23,8 +22,8 @@ const metadata = {
 createAppKit({
   adapters: [wagmiAdapter],
   projectId: projectId!,
-  networks: [optimismSepolia],
-  defaultNetwork: optimismSepolia,
+  networks: [new_sophon_testnet],
+  defaultNetwork: new_sophon_testnet,
   metadata: metadata,
   features: {
     analytics: false,
