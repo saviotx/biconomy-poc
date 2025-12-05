@@ -23,6 +23,19 @@ export default function BiconomySmartAccount() {
   const [isDeploying, setIsDeploying] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<{
+    label: string;
+    text: string;
+  } | null>(null);
+
+  const formatPreview = (label: string, data: unknown) => {
+    const text = JSON.stringify(
+      data,
+      (_, value) => (typeof value === "bigint" ? value.toString() : value),
+      2
+    );
+    setPreviewData({ label, text });
+  };
 
   const isBiconomyAccountDeployed = async (
     chain: Chain,
@@ -163,6 +176,60 @@ export default function BiconomySmartAccount() {
     }
   };
 
+  const previewDeployTransaction = async () => {
+    if (!walletClient || !address) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const smartAccount = await toMultichainNexusAccount({
+        signer: walletClient,
+        chainConfigurations: [
+          {
+            chain: new_sophon_testnet,
+            transport: http(),
+            version: getMEEVersion(MEEVersion.V2_1_0),
+          },
+        ],
+      });
+
+      const nexusAddress = smartAccount.addressOn(new_sophon_testnet.id);
+      const dummyInstruction = await smartAccount.build({
+        type: "default",
+        data: {
+          calls: [
+            {
+              to: "0x0000000000000000000000000000000000000000",
+              value: BigInt(0),
+              data: "0x",
+              gasLimit: BigInt(20000),
+            },
+          ],
+          chainId: new_sophon_testnet.id,
+        },
+      });
+
+      const isStaging = true;
+
+      formatPreview("Deploy Smart Account Params", {
+        nexusAddress,
+        chainId: new_sophon_testnet.id,
+        instructions: [dummyInstruction],
+        sponsorship: true,
+        sponsorshipOptions: {
+          url: getDefaultMEENetworkUrl(isStaging),
+          gasTank: getDefaultMeeGasTank(isStaging),
+        },
+      });
+    } catch (err) {
+      console.error("❌ Error building deploy preview:", err);
+      setError(err instanceof Error ? err.message : "Unknown error occurred");
+    }
+  };
+
   useEffect(() => {
     checkIfSmartAccountIsDeployed();
   }, [walletClient]);
@@ -227,22 +294,49 @@ export default function BiconomySmartAccount() {
           </div>
         )}
 
+        {/* Preview */}
+        {previewData && (
+          <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">{previewData.label}</p>
+              <button
+                onClick={() => setPreviewData(null)}
+                className="text-xs text-indigo-700 dark:text-indigo-300 hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+            <pre className="mt-2 text-xs font-mono text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-all">
+              {previewData.text}
+            </pre>
+          </div>
+        )}
+
         {/* Deploy Button */}
-        <button
-          onClick={deploySmartAccount}
-          disabled={isDeploying || !!smartAccountAddress}
-          className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
-            isDeploying || !!smartAccountAddress
-              ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
-              : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white"
-          }`}
-        >
-          {isDeploying
-            ? "Deploying Smart Account..."
-            : smartAccountAddress
-            ? "Smart Account Deployed"
-            : "Deploy Smart Account"}
-        </button>
+        <div className="space-y-2">
+          <button
+            onClick={deploySmartAccount}
+            disabled={isDeploying || !!smartAccountAddress}
+            className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
+              isDeploying || !!smartAccountAddress
+                ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white"
+            }`}
+          >
+            {isDeploying
+              ? "Deploying Smart Account..."
+              : smartAccountAddress
+              ? "Smart Account Deployed"
+              : "Deploy Smart Account"}
+          </button>
+          <button
+            onClick={previewDeployTransaction}
+            disabled={isDeploying}
+            className="w-full py-2 px-4 rounded-lg font-medium transition-colors border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+          >
+            Preview Deploy Transaction Params
+          </button>
+        </div>
       </div>
     </div>
   );

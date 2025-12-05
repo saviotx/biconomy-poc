@@ -13,7 +13,7 @@ import {
   toSmartSessionsModule,
   getSudoPolicy,
 } from "@biconomy/abstractjs";
-import { http, type Hex } from "viem";
+import { Address, http, type Hex } from "viem";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { new_sophon_testnet } from "../providers/wagmi";
 
@@ -59,6 +59,10 @@ export default function SmartSessionsDemo() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [previewData, setPreviewData] = useState<{
+    label: string;
+    text: string;
+  } | null>(null);
 
   const addLog = (message: string) => {
     setLogs((prev) => [
@@ -99,13 +103,13 @@ export default function SmartSessionsDemo() {
       setSmartAccountAddress(nexusAddress ?? null);
       addLog(`Smart Account Address: ${nexusAddress}`);
 
-      // Generate a session key (this would normally be stored securely on your backend)
+      // Generate a session key (this would normally be stored securely on the backend)
       const sessionPrivateKey = generatePrivateKey();
       const sessionSigner = privateKeyToAccount(sessionPrivateKey);
       setSessionKeyAddress(sessionSigner.address);
       addLog(`Session Key Generated: ${sessionSigner.address}`);
 
-      // Store session key in localStorage for this demo (in production, store on backend!)
+      // Store session key in localStorage for this demo
       localStorage.setItem("sessionPrivateKey", sessionPrivateKey);
 
       // Create Smart Sessions validator module
@@ -132,21 +136,16 @@ export default function SmartSessionsDemo() {
       // Prepare for permissions (this will deploy account and install module if needed)
       const payload = await sessionsMeeClient.prepareForPermissions({
         smartSessionsValidator: ssValidator,
-        feeToken: {
-          address: "0x000000000000000000000000000000000000800A" as Hex, // SOPHON on New Sophon Testnet
+        /* feeToken: {
+          address: "0x0000000000000000000000000000000000000000" as Hex,
           chainId: new_sophon_testnet.id,
+        }, */
+        sponsorship: true,
+        sponsorshipOptions: {
+          url: getDefaultMEENetworkUrl(true),
+          gasTank: getDefaultMeeGasTank(true),
         },
       });
-
-      /* const payload = await sessionsMeeClient.prepareForPermissions({
-        smartSessionsValidator: ssValidator,
-        feeToken: {
-          // Use USDC as fee token on Optimism Sepolia
-          // You need to send USDC to your smart account first!
-          address: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7" as Hex, // USDC on Optimism Sepolia
-          chainId: new_sophon_testnet.id,
-        },
-      }); */
 
       console.log("🔑 Payload created:", payload);
 
@@ -214,9 +213,6 @@ export default function SmartSessionsDemo() {
       const sessionsMeeClient = meeClient.extend(meeSessionActions);
 
       addLog("Requesting signature to grant permission...");
-
-      // Grant permission to send a simple transaction (0 ETH to any address)
-      // Using getSudoPolicy() for simplicity - this allows any action
       console.log("Session key address:", sessionKeyAddress);
 
       const sessionDetailsResult =
@@ -225,9 +221,9 @@ export default function SmartSessionsDemo() {
           actions: [
             {
               chainId: new_sophon_testnet.id,
-              actionTarget: "0x0000000000000000000000000000000000000000" as Hex, // Allow any target
-              actionTargetSelector: "0x00000000" as Hex, // Allow any function
-              actionPolicies: [getSudoPolicy()], // Sudo policy = unrestricted (for demo purposes)
+              actionTarget: smartAccountAddress as Address,
+              actionTargetSelector: "0x00000000" as Hex,
+              actionPolicies: [getSudoPolicy()],
             },
           ],
         });
@@ -275,6 +271,9 @@ export default function SmartSessionsDemo() {
 
       const sessionSigner = privateKeyToAccount(sessionPrivateKey as Hex);
       const parsedSessionDetails = deserializeBigInt(storedSessionDetails);
+      const sessionDetailsArray = Array.isArray(parsedSessionDetails)
+        ? parsedSessionDetails
+        : [parsedSessionDetails];
 
       addLog("Creating account with session signer...");
 
@@ -285,6 +284,7 @@ export default function SmartSessionsDemo() {
             chain: new_sophon_testnet,
             transport: http(),
             version: getMEEVersion(MEEVersion.V2_1_0),
+            accountAddress: smartAccountAddress as Hex,
           },
         ],
         signer: sessionSigner,
@@ -301,21 +301,19 @@ export default function SmartSessionsDemo() {
         sessionSignerMeeClient.extend(meeSessionActions);
 
       addLog("Building and sending transaction (0 ETH transfer)...");
-
       addLog("Executing with session permission...");
 
       // Use the permission to execute (send 0 ETH to the smart account itself)
       const executionPayload =
         await sessionSignerSessionMeeClient.usePermission({
-          // @ts-expect-error - Type assertion needed after BigInt deserialization
-          sessionDetails: parsedSessionDetails,
+          sessionDetails: sessionDetailsArray,
           mode: "ENABLE_AND_USE",
           instructions: [
             {
               chainId: new_sophon_testnet.id,
               calls: [
                 {
-                  to: smartAccountAddress as Hex,
+                  to: smartAccountAddress as Address,
                   value: BigInt(0),
                   data: "0x",
                 },
@@ -331,7 +329,7 @@ export default function SmartSessionsDemo() {
 
       setTxHash(executionPayload.hash);
       addLog(`Transaction sent! Hash: ${executionPayload.hash}`);
-      addLog("⏳ Waiting for confirmation...");
+      addLog("Waiting for confirmation...");
 
       await sessionSignerMeeClient.waitForSupertransactionReceipt({
         hash: executionPayload.hash,
@@ -450,62 +448,86 @@ export default function SmartSessionsDemo() {
           </div>
         )}
 
+        {/* Preview */}
+        {previewData && (
+          <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">{previewData.label}</p>
+              <button
+                onClick={() => setPreviewData(null)}
+                className="text-xs text-indigo-700 dark:text-indigo-300 hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+            <pre className="mt-2 text-xs font-mono text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-all">
+              {previewData.text}
+            </pre>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="space-y-3">
           {/* Step 1 */}
-          <button
-            onClick={prepareAccount}
-            disabled={isLoading || currentStep !== "idle"}
-            className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
-              isLoading || currentStep !== "idle"
-                ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
+          <div className="space-y-2">
+            <button
+              onClick={prepareAccount}
+              disabled={isLoading || currentStep !== "idle"}
+              className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
+                isLoading || currentStep !== "idle"
+                  ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
+                  : smartAccountAddress
+                  ? "bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white"
+                  : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white"
+              }`}
+            >
+              {currentStep === "preparing"
+                ? "Preparing Account..."
                 : smartAccountAddress
-                ? "bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white"
-                : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white"
-            }`}
-          >
-            {currentStep === "preparing"
-              ? "Preparing Account..."
-              : smartAccountAddress
-              ? "Step 1: Account Prepared"
-              : "Step 1: Prepare Account & Install Sessions Module"}
-          </button>
+                ? "Step 1: Account Prepared"
+                : "Step 1: Prepare Account & Install Sessions Module"}
+            </button>
+          </div>
 
           {/* Step 2 */}
-          <button
-            onClick={grantPermission}
-            disabled={
-              isLoading || !smartAccountAddress || currentStep !== "idle"
-            }
-            className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
-              isLoading || !smartAccountAddress || currentStep !== "idle"
-                ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
+          <div className="space-y-2">
+            <button
+              onClick={grantPermission}
+              disabled={
+                isLoading || !smartAccountAddress || currentStep !== "idle"
+              }
+              className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
+                isLoading || !smartAccountAddress || currentStep !== "idle"
+                  ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
+                  : sessionDetails
+                  ? "bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white"
+                  : "bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 text-white"
+              }`}
+            >
+              {currentStep === "granting"
+                ? "Granting Permission..."
                 : sessionDetails
-                ? "bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white"
-                : "bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 text-white"
-            }`}
-          >
-            {currentStep === "granting"
-              ? "Granting Permission..."
-              : sessionDetails
-              ? "Step 2: Permission Granted"
-              : "Step 2: Grant Permission to Session Key"}
-          </button>
+                ? "Step 2: Permission Granted"
+                : "Step 2: Grant Permission to Session Key"}
+            </button>
+          </div>
 
           {/* Step 3 */}
-          <button
-            onClick={useSessionKey}
-            disabled={isLoading || !sessionDetails || currentStep !== "idle"}
-            className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
-              isLoading || !sessionDetails || currentStep !== "idle"
-                ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
-                : "bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600 text-white"
-            }`}
-          >
-            {currentStep === "using"
-              ? "Executing with Session Key..."
-              : "Step 3: Use Session Key (No Signature Required!)"}
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={useSessionKey}
+              disabled={isLoading || !sessionDetails || currentStep !== "idle"}
+              className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
+                isLoading || !sessionDetails || currentStep !== "idle"
+                  ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
+                  : "bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600 text-white"
+              }`}
+            >
+              {currentStep === "using"
+                ? "Executing with Session Key..."
+                : "Step 3: Use Session Key (No Signature Required!)"}
+            </button>
+          </div>
 
           {/* Reset Button */}
           {smartAccountAddress && (
